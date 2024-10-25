@@ -1,0 +1,122 @@
+#!/bin/bash
+SCRIPT_NAME="install-nvim"
+SYMLINK_DIR="/usr/local/bin"
+NVIM_RELEASE_URL="https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz"
+DEFAULT_PREFIX="/opt"
+
+NVIM_TARBALL=$(basename "$NVIM_RELEASE_URL")
+NVIM_DIR="${NVIM_TARBALL%.tar.gz}"
+
+function error() {
+    echo "Error: $1"
+    echo
+    exit 1
+}
+
+function usage() {
+    error "Usage: ${SCRIPT_NAME} [destination-path]"
+}
+
+function configure_path() {
+    PREFIX="$1"
+    if [[ "$PREFIX" = "" ]]; then
+        echo -n "No prefix given. Place Neovim in '$DEFAULT_PREFIX'? (y/n) "
+        read RESPONSE
+        if [[ "$RESPONSE" = "y" ]]; then
+            PREFIX="$DEFAULT_PREFIX"
+        else
+            usage
+        fi
+    fi
+
+    if [[ ! -d "$PREFIX" ]]; then
+        error "Prefix '${PREFIX}' does not exist."
+    fi
+
+    if [[ ! -w "$PREFIX" ]]; then
+        error "Destination '${PREFIX}' must be writable."
+    fi
+
+    cd "$PREFIX"
+}
+
+function download_nvim() {
+    echo -n "- Downloading Neovim..."
+    rm -f "$NVIM_TARBALL"
+    wget "$NVIM_RELEASE_URL" >/dev/null 2>/dev/null
+    RESULT=$?
+
+    if [[ $RESULT -eq 0 ]]; then
+        echo " done"
+        return 0
+    fi
+
+    echo " failed"
+    return 1
+}
+
+function expand_nvim() {
+    echo -n "- Expanding archive..."
+    NVIM_TARBALL=$(basename "$NVIM_RELEASE_URL")
+    tar -zxf "$NVIM_TARBALL"
+    rm -f "$NVIM_TARBALL"
+    RESULT=$?
+
+    if [[ $RESULT -eq 0 ]]; then
+        echo " done"
+        return 0
+    fi
+
+    echo " failed"
+    return 1
+}
+
+function symlink_nvim() {
+    echo -n "- Symlinking Neovim to '$SYMLINK_DIR'..."
+
+    if [[ ! -d "$SYMLINK_DIR" ]]; then
+        echo " failed"
+        error "Symlink directory '$SYMLINK_DIR' does not exist."
+    fi
+
+    if [[ ! -w "$SYMLINK_DIR" ]]; then
+        echo " failed"
+        error "Need write access to symlink directory."
+    fi
+
+    if [[ -L "$SYMLINK_DIR/nvim" || -e "$SYMLINK_DIR/nvim" ]]; then
+        echo " failed"
+        error "Symlink already exists."
+    fi
+
+    ln -s $(readlink -f "$NVIM_DIR/bin/nvim") "$SYMLINK_DIR"
+    RESULT=$?
+
+    if [[ $RESULT -ne 0 ]]; then
+        echo " failed"
+        error "Unknown error while symlinking."
+    fi
+
+    echo " done"
+}
+
+function ensure_nvim() {
+    echo -n "Checking if Neovim is available..."
+    which nvim >/dev/null 2>/dev/null
+    RESULT=$?
+    if [[ $RESULT -eq 0 ]]; then
+        echo " yes"
+        return 0
+    fi
+
+    echo " no"
+
+    echo "Installing Neovim:"
+    download_nvim
+    expand_nvim
+    symlink_nvim
+    echo "Neovim installed."
+}
+
+configure_path "$1"
+ensure_nvim
